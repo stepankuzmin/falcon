@@ -73,6 +73,13 @@ async fn test_get_table_source_tile_ok() {
     let mut app = test::init_service(App::new().data(state).configure(router)).await;
 
     let req = test::TestRequest::get()
+        .uri("/public.non_existant/0/0/0.pbf")
+        .to_request();
+
+    let response = test::call_service(&mut app, req).await;
+    assert_eq!(response.status(), http::StatusCode::NOT_FOUND);
+
+    let req = test::TestRequest::get()
         .uri("/public.table_source/0/0/0.pbf")
         .to_request();
 

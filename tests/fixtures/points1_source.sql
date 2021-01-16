@@ -1,6 +1,6 @@
-CREATE TABLE points(gid SERIAL PRIMARY KEY, geom GEOMETRY(POINT, 4326));
+CREATE TABLE points1(gid SERIAL PRIMARY KEY, geom GEOMETRY(POINT, 4326));
 
-INSERT INTO points
+INSERT INTO points1
     SELECT
         generate_series(1, 10000) as id,
         (
@@ -12,5 +12,5 @@ INSERT INTO points
             )
         ).geom;
 
-CREATE INDEX ON points USING GIST(geom);
-CLUSTER points_geom_idx ON points;
+CREATE INDEX ON points1 USING GIST(geom);
+CLUSTER points1_geom_idx ON points1;

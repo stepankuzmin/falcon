@@ -1,6 +1,7 @@
 use serde::Deserialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::rc::Rc;
 
 use actix::{Actor, Addr, SyncArbiter, SystemRunner};
@@ -9,6 +10,7 @@ use actix_web::{
     error, http, middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, Result,
 };
 
+use crate::composite_source::CompositeSource;
 use crate::config::Config;
 use crate::coordinator_actor::CoordinatorActor;
 use crate::db::Pool;
@@ -16,7 +18,7 @@ use crate::db_actor::DBActor;
 use crate::function_source::FunctionSources;
 use crate::messages;
 use crate::source::{Source, XYZ};
-use crate::table_source::TableSources;
+use crate::table_source::{TableSource, TableSources};
 use crate::worker_actor::WorkerActor;
 
 pub struct AppState {
@@ -33,8 +35,23 @@ struct SourceRequest {
 }
 
 #[derive(Deserialize)]
+struct CompositeSourceRequest {
+    source_ids: String,
+}
+
+#[derive(Deserialize)]
 struct TileRequest {
     source_id: String,
+    z: u32,
+    x: u32,
+    y: u32,
+    #[allow(dead_code)]
+    format: String,
+}
+
+#[derive(Deserialize)]
+struct CompositeTileRequest {
+    source_ids: String,
     z: u32,
     x: u32,
     y: u32,
@@ -65,9 +82,9 @@ async fn get_table_sources(state: web::Data<AppState>) -> Result<HttpResponse, E
     Ok(HttpResponse::Ok().json(table_sources))
 }
 
-async fn get_table_source(
+async fn get_composite_source(
     req: HttpRequest,
-    path: web::Path<SourceRequest>,
+    path: web::Path<CompositeSourceRequest>,
     state: web::Data<AppState>,
 ) -> Result<HttpResponse> {
     let table_sources = state
@@ -76,9 +93,21 @@ async fn get_table_source(
         .clone()
         .ok_or_else(|| error::ErrorNotFound("There is no table sources"))?;
 
-    let source = table_sources.get(&path.source_id).ok_or_else(|| {
-        error::ErrorNotFound(format!("Table source '{}' not found", path.source_id))
-    })?;
+    let sources: Vec<TableSource> = path
+        .source_ids
+        .split(',')
+        .filter_map(|source_id| table_sources.get(source_id))
+        .map(|source| source.deref().clone())
+        .collect();
+
+    if sources.is_empty() {
+        return Err(error::ErrorNotFound("There is no such table sources"));
+    }
+
+    let source = CompositeSource {
+        id: path.source_ids.clone(),
+        table_sources: sources,
+    };
 
     let mut tilejson = source
         .get_tilejson()
@@ -116,8 +145,8 @@ async fn get_table_source(
     Ok(HttpResponse::Ok().json(tilejson))
 }
 
-async fn get_table_source_tile(
-    path: web::Path<TileRequest>,
+async fn get_composite_source_tile(
+    path: web::Path<CompositeTileRequest>,
     state: web::Data<AppState>,
 ) -> Result<HttpResponse, Error> {
     let table_sources = state
@@ -126,9 +155,21 @@ async fn get_table_source_tile(
         .clone()
         .ok_or_else(|| error::ErrorNotFound("There is no table sources"))?;
 
-    let source = table_sources.get(&path.source_id).ok_or_else(|| {
-        error::ErrorNotFound(format!("Table source '{}' not found", path.source_id))
-    })?;
+    let sources: Vec<TableSource> = path
+        .source_ids
+        .split(',')
+        .filter_map(|source_id| table_sources.get(source_id))
+        .map(|source| source.deref().clone())
+        .collect();
+
+    if sources.is_empty() {
+        return Err(error::ErrorNotFound("There is no such table sources"));
+    }
+
+    let source = CompositeSource {
+        id: path.source_ids.clone(),
+        table_sources: sources,
+    };
 
     let xyz = XYZ {
         z: path.z,
@@ -139,7 +180,7 @@ async fn get_table_source_tile(
     let message = messages::GetTile {
         xyz,
         query: None,
-        source: source.clone(),
+        source: Box::new(source),
     };
 
     let tile = state
@@ -279,10 +320,10 @@ async fn get_function_source_tile(
 
 pub fn router(cfg: &mut web::ServiceConfig) {
     cfg.route("/index.json", web::get().to(get_table_sources))
-        .route("/{source_id}.json", web::get().to(get_table_source))
+        .route("/{source_ids}.json", web::get().to(get_composite_source))
         .route(
-            "/{source_id}/{z}/{x}/{y}.{format}",
-            web::get().to(get_table_source_tile),
+            "/{source_ids}/{z}/{x}/{y}.{format}",
+            web::get().to(get_composite_source_tile),
         )
         .route("/rpc/index.json", web::get().to(get_function_sources))
         .route("/rpc/{source_id}.json", web::get().to(get_function_source))

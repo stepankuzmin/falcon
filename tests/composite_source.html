@@ -42,20 +42,37 @@
         center: [0, 0]
       });
 
-      const sourceId = 'public.points1';
-
       map.on('load', function () {
-        map.addLayer({
-          id: sourceId,
-          type: 'circle',
-          source: {
-            type: 'vector',
-            url: `http://0.0.0.0:3000/${sourceId}.json`
-          },
-          'source-layer': sourceId
+        map.addSource('points', {
+          type: 'vector',
+          url: `http://0.0.0.0:3000/public.points1,public.points2.json`
         });
 
-        map.on('click', sourceId, function (event) {
+        map.addLayer({
+          id: 'red_points',
+          type: 'circle',
+          source: 'points',
+          'source-layer': 'public.points1',
+          paint: {
+            'circle-color': 'red'
+          }
+        });
+
+        map.on('click', 'red_points', function (event) {
+          console.log(event.features);
+        });
+
+        map.addLayer({
+          id: 'blue_points',
+          type: 'circle',
+          source: 'points',
+          'source-layer': 'public.points2',
+          paint: {
+            'circle-color': 'blue'
+          }
+        });
+
+        map.on('click', 'blue_points', function (event) {
           console.log(event.features);
         });
       });
