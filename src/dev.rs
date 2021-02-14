@@ -26,6 +26,7 @@ pub fn mock_table_sources() -> Option<TableSources> {
         clip_geom: Some(true),
         geometry_type: None,
         properties: HashMap::new(),
+        bounds:[-180.0,-90.0,180.0,90.0].to_vec()
     };
 
     let mut table_sources: TableSources = HashMap::new();
