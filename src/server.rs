@@ -6,8 +6,9 @@ use std::rc::Rc;
 use actix::{Actor, Addr, SyncArbiter, SystemRunner};
 use actix_cors::Cors;
 use actix_web::{
-    error, http, middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, Result,
+    dev, error, http, middleware, web, App, Error, HttpRequest, HttpResponse, HttpServer, Result,
 };
+use actix_web_httpauth::{extractors::bearer::BearerAuth, middleware::HttpAuthentication};
 
 use crate::config::Config;
 use crate::coordinator_actor::CoordinatorActor;
@@ -18,6 +19,18 @@ use crate::messages;
 use crate::source::{Source, XYZ};
 use crate::table_source::TableSources;
 use crate::worker_actor::WorkerActor;
+
+// For JWT
+use jsonwebtokens as jwt;
+use jwt::{raw, Algorithm, AlgorithmID, Verifier};
+use std::str::FromStr;
+use std::time::SystemTime;
+
+pub struct JWTConfig {
+    pub jwt_secret: String,
+    pub jwt_algorithm: String,
+    pub jwt_check_exp_time: bool,
+}
 
 pub struct AppState {
     pub db: Addr<DBActor>,
@@ -323,6 +336,75 @@ fn create_state(
     }
 }
 
+async fn bearer_auth_validator(
+    req: dev::ServiceRequest,
+    credentials: BearerAuth,
+) -> Result<dev::ServiceRequest, Error> {
+    let jwt_config = req.app_data::<JWTConfig>().unwrap();
+
+    let try_catch_block = || -> Result<(Verifier, Algorithm, bool), jwt::error::Error> {
+        let header_json;
+        let raw::TokenSlices { header, claims, .. } = raw::split_token(credentials.token())?;
+        let claims_json = raw::decode_json_token_slice(claims)?;
+        let alg_name = if jwt_config.jwt_algorithm.is_empty() {
+            header_json = raw::decode_json_token_slice(header)?;
+            header_json["alg"].as_str().unwrap_or("")
+        } else {
+            jwt_config.jwt_algorithm.as_str()
+        };
+        let alg_id = AlgorithmID::from_str(alg_name)?;
+
+        Ok((
+            Verifier::create().build()?,
+            Algorithm::new_hmac(alg_id, jwt_config.jwt_secret.as_str())?,
+            claims_json["exp"].is_null(),
+        ))
+    };
+
+    match try_catch_block() {
+        Ok((verifier, alg, exp_is_null)) => {
+            let result = if jwt_config.jwt_check_exp_time {
+                if exp_is_null {
+                    return Err(error::ErrorForbidden("Claim exp does not exist."));
+                }
+
+                let now_unixtimestamp = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs();
+                match verifier.verify_for_time(&credentials.token(), &alg, now_unixtimestamp) {
+                    Ok(_) => Ok(true),
+                    Err(e) => Err(e),
+                }
+            } else {
+                match verifier.verify(&credentials.token(), &alg) {
+                    Ok(_) => Ok(true),
+                    Err(e) => Err(e),
+                }
+            };
+            match result {
+                Ok(_) => Ok(req),
+                Err(e) => {
+                    info!(
+                        "Error verify JWT: token \"{}\" error \"{}\".",
+                        credentials.token(),
+                        e.to_string()
+                    );
+                    Err(error::ErrorForbidden(e.to_string()))
+                }
+            }
+        }
+        Err(e) => {
+            info!(
+                "Error generate algorith and verifier JWT: token \"{}\" error \"{}\".",
+                credentials.token(),
+                e.to_string()
+            );
+            Err(error::ErrorForbidden(e.to_string()))
+        }
+    }
+}
+
 pub fn new(pool: Pool, config: Config) -> SystemRunner {
     let sys = actix_rt::System::new("server");
 
@@ -336,9 +418,17 @@ pub fn new(pool: Pool, config: Config) -> SystemRunner {
     HttpServer::new(move || {
         let state = create_state(db.clone(), coordinator.clone(), config.clone());
 
+        let jwt_config = JWTConfig {
+            jwt_secret: config.jwt_secret.clone(),
+            jwt_algorithm: config.jwt_algorithm.clone(),
+            jwt_check_exp_time: config.jwt_check_exp_time,
+        };
+
         let cors_middleware = Cors::default().allow_any_origin();
+        let auth = HttpAuthentication::bearer(bearer_auth_validator);
 
         App::new()
+            .app_data(jwt_config)
             .data(state)
             .wrap(cors_middleware)
             .wrap(middleware::NormalizePath::new(
@@ -346,6 +436,7 @@ pub fn new(pool: Pool, config: Config) -> SystemRunner {
             ))
             .wrap(middleware::Logger::default())
             .wrap(middleware::Compress::default())
+            .wrap(middleware::Condition::new(config.jwt, auth))
             .configure(router)
     })
     .bind(listen_addresses.clone())

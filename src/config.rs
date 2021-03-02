@@ -17,6 +17,10 @@ pub struct Config {
     pub table_sources: Option<TableSources>,
     pub function_sources: Option<FunctionSources>,
     pub danger_accept_invalid_certs: bool,
+    pub jwt: bool,
+    pub jwt_secret: String,
+    pub jwt_algorithm: String,
+    pub jwt_check_exp_time: bool,
 }
 
 #[derive(Deserialize)]
@@ -30,6 +34,10 @@ pub struct ConfigBuilder {
     pub table_sources: Option<TableSources>,
     pub function_sources: Option<FunctionSources>,
     pub danger_accept_invalid_certs: Option<bool>,
+    pub jwt: Option<bool>,
+    pub jwt_secret: Option<String>,
+    pub jwt_algorithm: Option<String>,
+    pub jwt_check_exp_time: Option<bool>,
 }
 
 impl ConfigBuilder {
@@ -46,6 +54,10 @@ impl ConfigBuilder {
             table_sources: self.table_sources,
             function_sources: self.function_sources,
             danger_accept_invalid_certs: self.danger_accept_invalid_certs.unwrap_or(false),
+            jwt: self.jwt.unwrap_or(false),
+            jwt_secret: self.jwt_secret.unwrap_or_else(|| "".to_owned()),
+            jwt_algorithm: self.jwt_algorithm.unwrap_or_else(|| "".to_owned()),
+            jwt_check_exp_time: self.jwt_check_exp_time.unwrap_or(false),
         }
     }
 }
