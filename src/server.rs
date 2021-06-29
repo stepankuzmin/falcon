@@ -129,20 +129,20 @@ async fn get_composite_source(
             error::ErrorBadRequest(format!("Can't build TileJSON: {}", e))
         })?;
 
-    let query_string = req.query_string();
-    let query = if query_string.is_empty() {
-        query_string.to_owned()
+    let (sep, query) = if req.query_string().is_empty() {
+        ("", "")
     } else {
-        format!("?{}", query_string)
+        ("?", req.query_string())
     };
 
     let connection_info = req.connection_info();
 
     let tiles_url = format!(
-        "{}://{}{}/{{z}}/{{x}}/{{y}}.pbf{}",
+        "{}://{}{}/{{z}}/{{x}}/{{y}}.pbf{}{}",
         connection_info.scheme(),
         connection_info.host(),
         tiles_path,
+        sep,
         query
     );
 
@@ -258,20 +258,20 @@ async fn get_function_source(
             error::ErrorBadRequest(format!("Can't build TileJSON: {}", e))
         })?;
 
-    let query_string = req.query_string();
-    let query = if query_string.is_empty() {
-        query_string.to_owned()
+    let (sep, query) = if req.query_string().is_empty() {
+        ("", "")
     } else {
-        format!("?{}", query_string)
+        ("?", req.query_string())
     };
 
     let connection_info = req.connection_info();
 
     let tiles_url = format!(
-        "{}://{}{}/{{z}}/{{x}}/{{y}}.pbf{}",
+        "{}://{}{}/{{z}}/{{x}}/{{y}}.pbf{}{}",
         connection_info.scheme(),
         connection_info.host(),
         tiles_path,
+        sep,
         query
     );
 
