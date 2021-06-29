@@ -376,6 +376,9 @@ You can also configure martin using environment variables
 | DATABASE_URL                | postgres://postgres@localhost/db | postgres database connection |
 | WATCH_MODE                  | true                             | scan for new sources         |
 | DANGER_ACCEPT_INVALID_CERTS | false                            | Trust invalid certificates   |
+| CA_ROOT_FILE                | /certs/ca_root.crt               | Server root certificate file |
+| CLIENT_PKCS12_FILE          | /certs/identity.pfx              | Client certificate file      |
+| CLIENT_PKCS12_PASS          | secret                           | Client certificate password  |
 
 ## Configuration File
 

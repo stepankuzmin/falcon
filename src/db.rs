@@ -1,12 +1,14 @@
-use std::io;
 use std::str::FromStr;
+use std::{env, io};
 
-use native_tls::TlsConnector;
+use native_tls::{Certificate, Identity, TlsConnector};
 use postgres_native_tls::MakeTlsConnector;
 use r2d2::PooledConnection;
 use r2d2_postgres::PostgresConnectionManager;
 use semver::Version;
 use semver::VersionReq;
+use std::fs::File;
+use std::io::Read;
 
 use crate::utils::prettify_error;
 
@@ -15,7 +17,48 @@ pub type Pool = r2d2::Pool<ConnectionManager>;
 pub type Connection = PooledConnection<ConnectionManager>;
 
 fn make_tls_connector(danger_accept_invalid_certs: bool) -> io::Result<MakeTlsConnector> {
-    let connector = TlsConnector::builder()
+    let key = "CA_ROOT_FILE";
+    let ca_file = match env::var_os(key) {
+        Some(s) => s.into_string().unwrap(),
+        None => {
+            println!("{} is not defined in the environment", key);
+            String::default()
+        }
+    };
+    let key = "CLIENT_PKCS12_FILE";
+    let client_identity_file = match env::var_os(key) {
+        Some(s) => s.into_string().unwrap(),
+        None => {
+            println!("{} is not defined in the environment", key);
+            String::default()
+        }
+    };
+    let key = "CLIENT_PKCS12_PASS";
+    let client_identity_pass = match env::var_os(key) {
+        Some(s) => s.into_string().unwrap(),
+        None => {
+            println!("{} is not defined in the environment", key);
+            String::default()
+        }
+    };
+
+    let mut builder = TlsConnector::builder();
+
+    if !client_identity_file.is_empty() {
+        let mut file = File::open(&client_identity_file).unwrap();
+        let mut identity = vec![];
+        file.read_to_end(&mut identity).unwrap();
+        let identity = Identity::from_pkcs12(&identity, &client_identity_pass).unwrap();
+        builder.identity(identity);
+    }
+    if !ca_file.is_empty() {
+        let mut ca = File::open(&ca_file).unwrap();
+        let mut buf = Vec::new();
+        ca.read_to_end(&mut buf).unwrap();
+        let cert = Certificate::from_pem(&buf).unwrap();
+        builder.add_root_certificate(cert);
+    }
+    let connector = builder
         .danger_accept_invalid_certs(danger_accept_invalid_certs)
         .build()
         .map_err(prettify_error("Can't build TLS connection"))?;
