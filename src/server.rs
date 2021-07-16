@@ -365,7 +365,7 @@ fn create_state(
 }
 
 pub fn new(pool: Pool, config: Config) -> SystemRunner {
-    let sys = actix::System::new("server");
+    let sys = actix::System::new();
 
     let db = SyncArbiter::start(3, move || DbActor(pool.clone()));
     let coordinator: Addr<_> = CoordinatorActor::default().start();

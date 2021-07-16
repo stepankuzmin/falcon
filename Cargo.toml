@@ -13,9 +13,9 @@ name = "martin"
 path = "src/bin/main.rs"
 
 [dependencies]
-actix = "0.10"
+actix = "0.12"
 actix-cors = "0.5.4"
-actix-rt = "1.1"
+actix-rt = "2.2"
 actix-web = "3.3.2"
 docopt = "1"
 env_logger = "0.9"
